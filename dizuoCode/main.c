@@ -86,15 +86,20 @@ void main(void)
             cycle_cnt++;
 
 #ifdef ENABLE_TEST_MODE
-            if (cycle_cnt >= 50)
+            // 让 PA2 和 PA4 实时追踪 PB1 的状态
+            if (READ_OPTO() == 1)
             {
-                cycle_cnt = 0;
-                PORTA ^= (1 << FAULT_RELAY_PIN);
-                PORTA ^= (1 << FIRE_RELAY_PIN);
+                FIRE_RELAY_ON();
+                FAULT_RELAY_ON();
+            }
+            else
+            {
+                FIRE_RELAY_OFF();
+                FAULT_RELAY_OFF();
             }
 #else
-            // 采样光耦状态。假设光耦导通时外部拉低为 0
-            if (READ_OPTO() == 0)
+            // 采样光耦状态。
+            if (READ_OPTO() == 1)
             {
                 high_cnt++;
             }
