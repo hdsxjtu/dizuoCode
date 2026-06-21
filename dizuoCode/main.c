@@ -1,4 +1,4 @@
-﻿#include <ny8.h>
+#include <ny8.h>
 #include "ny8_constant.h"
 
 /*
@@ -10,7 +10,7 @@
  * - 安全机制：任何状态的改变（包括触发故障、恢复正常、触发火警），都必须连续2次(即2秒)检测到相同状态才执行。
  */
 
-// //#define ENABLE_TEST_MODE  // 取消注释可进入方波测试模式
+// #define ENABLE_TEST_MODE
 
 // ================= 宏定义与参数配置 =================
 #define FAULT_RELAY_PIN 4 // PA4 (7脚) - 对应故障继电器
@@ -20,32 +20,32 @@
 #define FAULT_RELAY_ON()  PORTA |= (1 << FAULT_RELAY_PIN)
 #define FAULT_RELAY_OFF() PORTA &= ~(1 << FAULT_RELAY_PIN)
 
-#define FIRE_RELAY_ON()   PORTA |= (1 << FIRE_RELAY_PIN)
-#define FIRE_RELAY_OFF()  PORTA &= ~(1 << FIRE_RELAY_PIN)
+#define FIRE_RELAY_ON()  PORTA |= (1 << FIRE_RELAY_PIN)
+#define FIRE_RELAY_OFF() PORTA &= ~(1 << FIRE_RELAY_PIN)
 
 #define READ_OPTO() ((PORTB >> OPTO_PIN) & 0x01)
 
 #define T0_INIT_VAL 176 // 32kHz下 10ms初值
 
 // ================= 全局变量 =================
-volatile unsigned char flag_10ms = 0;   
-unsigned char cycle_cnt = 0;            
-unsigned char high_cnt = 0;             
-unsigned char parsed_state = 0;         
-unsigned char last_parsed_state = 0xFF; 
-unsigned char active_state = 0xFF;      
+volatile unsigned char flag_10ms = 0;
+unsigned char cycle_cnt          = 0;
+unsigned char high_cnt           = 0;
+unsigned char parsed_state       = 0;
+unsigned char last_parsed_state  = 0xFF;
+unsigned char active_state       = 0xFF;
 
 // 火警自锁专属标志位 (0=未触发, 1=已触发且死锁)
-unsigned char fire_alarm_latched = 0;   
+unsigned char fire_alarm_latched = 0;
 
 // ================= 中断服务函数 =================
 void isr(void) __interrupt(0)
 {
     if (INTFbits.T0IF)
     {
-        TMR0 = T0_INIT_VAL; 
-        INTFbits.T0IF = 0;  
-        flag_10ms = 1; 
+        TMR0          = T0_INIT_VAL;
+        INTFbits.T0IF = 0;
+        flag_10ms     = 1;
     }
 }
 
@@ -58,12 +58,17 @@ void system_init()
     PORTB = 0x00;
     BPHCON &= ~(1 << OPTO_PIN); // 开启 PB1 内部上拉电阻
 
-    T0MD = 0x01; // I_LRC 32kHz, 预分频 1:4
-    TMR0 = T0_INIT_VAL; 
+    // 切换至低频 32kHz LRC 运行以降低功耗
+    OSCCR = 0x02; // SELHOSC = 0 (使用低频), STPHOSC = 1 (停止高频)
 
-    INTF = 0x00;       
-    INTEbits.T0IE = 1; 
-    ENI();             
+    // 配置 Timer0 时钟源为低频 LRC (32kHz)，预分频 1:4
+    // LCKTM0 = 1, T0CS = 1, PS0WDT = 0, PS0SEL = 001 -> 0xA1
+    T0MD = 0xA1;
+    TMR0 = T0_INIT_VAL;
+
+    INTF          = 0x00;
+    INTEbits.T0IE = 1;
+    ENI();
 }
 
 // ================= 主函数 =================
@@ -73,19 +78,19 @@ void main(void)
 
     while (1)
     {
-        CLRWDT(); 
+        CLRWDT();
 
         if (flag_10ms == 1)
         {
-            flag_10ms = 0; 
-            cycle_cnt++;   
+            flag_10ms = 0;
+            cycle_cnt++;
 
 #ifdef ENABLE_TEST_MODE
             if (cycle_cnt >= 50)
             {
                 cycle_cnt = 0;
-                PORTA ^= (1 << FAULT_RELAY_PIN); 
-                PORTA ^= (1 << FIRE_RELAY_PIN);  
+                PORTA ^= (1 << FAULT_RELAY_PIN);
+                PORTA ^= (1 << FIRE_RELAY_PIN);
             }
 #else
             // 采样光耦状态。假设光耦导通时外部拉低为 0
@@ -124,27 +129,27 @@ void main(void)
                 }
 
                 // ================== 核心控制逻辑 ==================
-                
+
                 // 【优先级 1】：火警一旦触发，绝对死锁，不再处理任何状态变化
                 if (fire_alarm_latched == 1)
                 {
                     // 维持原状，啥也不干 (需要人工断电复位)
                 }
-                else 
+                else
                 {
                     // 【优先级 2】：任何状态的改变（包括触发故障和恢复正常），都需要连续2秒确认防抖
                     if (parsed_state != 0xFF && parsed_state == last_parsed_state)
                     {
                         if (parsed_state != active_state)
                         {
-                            active_state = parsed_state; 
+                            active_state = parsed_state;
 
                             if (active_state == 4)
                             {
                                 // 确认火警！吸合火警继电器并拉起自锁标志
                                 FIRE_RELAY_ON();
                                 FAULT_RELAY_OFF();
-                                fire_alarm_latched = 1; 
+                                fire_alarm_latched = 1;
                             }
                             else if (active_state == 1)
                             {
@@ -167,13 +172,14 @@ void main(void)
 
                 // 一轮统计结束，清零计数器
                 cycle_cnt = 0;
-                high_cnt = 0;
+                high_cnt  = 0;
             }
 #endif
         }
         else
         {
-            __asm__("sleep");
+            // 进入 Standby 模式 (OPMD[1:0] = 10b, STPHOSC = 1, SELHOSC = 0 -> 0x0A)
+            OSCCR = 0x0A;
         }
     }
 }
