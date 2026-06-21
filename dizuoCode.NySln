@@ -1,0 +1,17 @@
+﻿
+Nyquest IDE Solution File, Format Version 1.00
+# NYIDE 6.00.0.4856
+Project("{608D5F73-6C2E-489F-8ED6-C0FBCCEB586F}") = "dizuoCode", "dizuoCode\dizuoCode.naprj", "{FA728B24-577F-4200-954A-AA022149E996}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any = Debug|Any
+		Release|Any = Release|Any
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FA728B24-577F-4200-954A-AA022149E996}.Debug|Any.Build.0 = Debug|Any
+		{FA728B24-577F-4200-954A-AA022149E996}.Debug|Any.ActiveCfg = Debug|Any
+		{FA728B24-577F-4200-954A-AA022149E996}.Release|Any.Build.0 = Release|Any
+		{FA728B24-577F-4200-954A-AA022149E996}.Release|Any.ActiveCfg = Release|Any
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,48 @@
+# ==========================================
+# 
+# NYIDE / 九齐单片机工程 Git 忽略清单
+# 
+# ==========================================
+
+# 1. 编译输出目录 (NYIDE 默认的生成文件夹)
+Output/
+OBJ/
+Obj/
+Debug/
+Release/
+
+# 2. 固件与烧录文件 (每次编译都会重新生成，无需追踪)
+*.bin
+*.hex
+*.s19
+*.elf
+*.fpga
+
+# 3. 编译过程产生的中间文件
+*.obj
+*.o
+*.lst
+*.map
+*.sym
+*.as
+*.s
+*.p
+*.d
+*.cof
+*.bak
+*.htm
+
+# 4. IDE 产生的临时文件或用户本地配置(视版本而定)
+*.tmp
+*.user
+*.cb
+
+# 5. 操作系统产生的垃圾文件 (Windows / macOS)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini

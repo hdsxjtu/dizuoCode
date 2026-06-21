@@ -1,0 +1,80 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup Condition="">
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <AssemblyName>dizuoCode</AssemblyName>
+    <Bank0Only>False</Bank0Only>
+    <BankselOptLevel>2</BankselOptLevel>
+    <BuildCCompilerVersion>NYC_NY8 2.20 [Build: 260324.00]</BuildCCompilerVersion>
+    <BuildNYASMVersion>NYASM 2.90 [Build: 260327.00]</BuildNYASMVersion>
+    <BuildNYIDEVersion>NYIDE 6.00 [Build: 260331.00]</BuildNYIDEVersion>
+    <CCompilerInstallDir>C:\Nyquest\NYC_NY8</CCompilerInstallDir>
+    <ChipId>NY8BE62D</ChipId>
+    <ClientName>fci</ClientName>
+    <Configuration>Debug</Configuration>
+    <GenAsmListFile>True</GenAsmListFile>
+    <GenListFile>True</GenListFile>
+    <GenMapFile>True</GenMapFile>
+    <InitializeBss>True</InitializeBss>
+    <NYASMInstallDir>C:\Nyquest\NYASM\</NYASMInstallDir>
+    <NYIDEInstallDir>C:\Nyquest\NYIDE\</NYIDEInstallDir>
+    <OutputType>bin</OutputType>
+    <Platform>CNy8</Platform>
+    <ProjectGuid>{FA728B24-577F-4200-954A-AA022149E996}</ProjectGuid>
+    <ProjectOptionChanged>False</ProjectOptionChanged>
+    <ReservedInterruptRam>2</ReservedInterruptRam>
+    <RootNamespace>dizuoCode</RootNamespace>
+    <WarningMsgCount>0</WarningMsgCount>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>True</DebugSymbols>
+    <DebugType>Full</DebugType>
+    <Optimize>False</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>False</DebugSymbols>
+    <DebugType>None</DebugType>
+    <Optimize>True</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="dizuoCode.cb" EntryPoint="false" MetaData="" />
+    <Compile Include="main.c" EntryPoint="false" MetaData="" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Client: fci" EntryPoint="false" MetaData="" />
+    <Reference Include="Config Block: dizuoCode.cb" EntryPoint="false" MetaData="" />
+    <Reference Include="IC Body: NY8BE62D" EntryPoint="false" MetaData="" />
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYC_NY8\include\NY8.h" EntryPoint="false" MetaData="Dependency Files\NY8.h" />
+    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYC_NY8\include\ny8_eeprom.h" EntryPoint="false" MetaData="Dependency Files\ny8_eeprom.h" />
+    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYC_NY8\include\ny8be62d.h" EntryPoint="false" MetaData="Dependency Files\ny8be62d.h" />
+    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYC_NY8\include\ny8common.h" EntryPoint="false" MetaData="Dependency Files\ny8common.h" />
+    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYIDE\include\NY8 C\NY8_constant.h" EntryPoint="false" MetaData="Dependency Files\NY8_constant.h" />
+    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYIDE\include\NY8 C\ny8be62d_constant.h" EntryPoint="false" MetaData="Dependency Files\ny8be62d_constant.h" />
+    <Folder Include="Dependency Files" EntryPoint="false" MetaData="" />
+  </ItemGroup>
+  <Properties>
+    <Array name="ActionFiles" />
+    <Array name="bookmarks" />
+    <Array name="EEPROMOverwriteData" />
+    <Array name="EnvelopFiles" />
+    <Array name="ExternalResource" />
+    <Array name="files">
+      <Element value="main.c|True" />
+    </Array>
+    <Array name="InstrumentFiles" />
+    <Array name="LedStripFiles" />
+    <Array name="MelodyDatabaseFiles" />
+    <Array name="MusicFiles" />
+    <Array name="RegisterWindowExpandInfo" />
+    <Array name="ResourceManager" />
+    <Array name="UpdateableResources" />
+    <Array name="UserDefinedSection" />
+    <Array name="VoiceFiles" />
+    <Array name="VRModule" />
+    <Array name="WatchItemInfo" />
+  </Properties>
+</Project>
