@@ -21,9 +21,10 @@
     <OutputType>bin</OutputType>
     <Platform>CNy8</Platform>
     <ProjectGuid>{FA728B24-577F-4200-954A-AA022149E996}</ProjectGuid>
-    <ProjectOptionChanged>False</ProjectOptionChanged>
+    <ProjectOptionChanged>True</ProjectOptionChanged>
     <ReservedInterruptRam>2</ReservedInterruptRam>
     <RootNamespace>dizuoCode</RootNamespace>
+    <TrimSetting>+ 0%</TrimSetting>
     <WarningMsgCount>0</WarningMsgCount>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
@@ -48,11 +49,11 @@
     <Reference Include="IC Body: NY8BE62D" EntryPoint="false" MetaData="" />
   </ItemGroup>
   <ItemGroup>
-    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYC_NY8\include\NY8.h" EntryPoint="false" MetaData="Dependency Files\NY8.h" />
+    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYC_NY8\include\ny8.h" EntryPoint="false" MetaData="Dependency Files\ny8.h" />
     <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYC_NY8\include\ny8_eeprom.h" EntryPoint="false" MetaData="Dependency Files\ny8_eeprom.h" />
     <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYC_NY8\include\ny8be62d.h" EntryPoint="false" MetaData="Dependency Files\ny8be62d.h" />
     <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYC_NY8\include\ny8common.h" EntryPoint="false" MetaData="Dependency Files\ny8common.h" />
-    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYIDE\include\NY8 C\NY8_constant.h" EntryPoint="false" MetaData="Dependency Files\NY8_constant.h" />
+    <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYIDE\include\NY8 C\ny8_constant.h" EntryPoint="false" MetaData="Dependency Files\ny8_constant.h" />
     <ApplicationDefinition Include="..\..\..\..\..\..\..\..\..\..\Nyquest\NYIDE\include\NY8 C\ny8be62d_constant.h" EntryPoint="false" MetaData="Dependency Files\ny8be62d_constant.h" />
     <Folder Include="Dependency Files" EntryPoint="false" MetaData="" />
   </ItemGroup>
