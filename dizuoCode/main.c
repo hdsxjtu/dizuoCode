@@ -25,12 +25,12 @@
 
 #define READ_OPTO() ((PORTB >> OPTO_PIN) & 0x01)
 
-#define T0_INIT_VAL 176 // 32kHz下 10ms初值
+#define T0_INIT_VAL 216 // 32kHz下 5ms初值 (256 - 5ms / 0.125ms = 216)
 
 // ================= 全局变量 =================
-volatile unsigned char flag_10ms = 0;
-unsigned char cycle_cnt          = 0;
-unsigned char high_cnt           = 0;
+volatile unsigned char flag_5ms = 0;
+unsigned int cycle_cnt          = 0; // 改为 16 位防溢出 (最大累计到 200+)
+unsigned int high_cnt           = 0; // 改为 16 位防溢出
 unsigned char parsed_state       = 0;
 unsigned char last_parsed_state  = 0xFF;
 unsigned char active_state       = 0xFF;
@@ -45,7 +45,7 @@ void isr(void) __interrupt(0)
     {
         TMR0          = T0_INIT_VAL;
         INTFbits.T0IF = 0;
-        flag_10ms     = 1;
+        flag_5ms      = 1;
     }
 }
 
@@ -56,7 +56,7 @@ void system_init()
     IOSTB = 0xFF; // PB 全输入
     PORTA = 0x00; // 继电器默认断开
     PORTB = 0x00;
-    BPHCON &= ~(1 << OPTO_PIN); // 开启 PB1 内部上拉电阻
+    BPHCON |= (1 << OPTO_PIN); // 禁用 PB1 内部上拉电阻 (外部已有 R10 下拉，避免分压打架与漏电)
 
     // 切换至低频 32kHz LRC 运行以降低功耗
     OSCCR = 0x02; // SELHOSC = 0 (使用低频), STPHOSC = 1 (停止高频)
@@ -80,9 +80,9 @@ void main(void)
     {
         CLRWDT();
 
-        if (flag_10ms == 1)
+        if (flag_5ms == 1)
         {
-            flag_10ms = 0;
+            flag_5ms = 0;
             cycle_cnt++;
 
 #ifdef ENABLE_TEST_MODE
@@ -104,33 +104,36 @@ void main(void)
                 high_cnt++;
             }
 
-            // 满 100 次采样 (1 秒结算一次)
-            if (cycle_cnt >= 100)
+            // 满 200 次采样 (5ms * 200 = 1 秒结算一次)
+            if (cycle_cnt >= 200)
             {
-                // 步骤 1: 解析本次波形状态
-                if (high_cnt <= 8)
+                // 步骤 1: 解析本次波形状态 (5ms 采样，总数 200 次)
+                if (high_cnt <= 4)
                 {
-                    parsed_state = 0; // 0/4 (无探测器或断线)
+                    parsed_state = 0; // 0/4 (无探测器或断线，留 0~4 次抗毛刺裕量)
                 }
-                else if (high_cnt > 17 && high_cnt < 33)
+                else if (high_cnt >= 6 && high_cnt < 66)
                 {
-                    parsed_state = 1; // 1/4 (正常)
+                    // 1: 正常待机
+                    // 适配 1/16 占空比(理论12.5次，涵盖6~25次)
+                    // 同时向下兼容 1/4 占空比(理论50次)
+                    parsed_state = 1; 
                 }
-                else if (high_cnt > 42 && high_cnt < 58)
+                else if (high_cnt > 85 && high_cnt < 115)
                 {
-                    parsed_state = 2; // 2/4 (故障类型 A)
+                    parsed_state = 2; // 2/4 (故障类型 A，50% 理论100次)
                 }
-                else if (high_cnt > 67 && high_cnt < 83)
+                else if (high_cnt > 135 && high_cnt < 165)
                 {
-                    parsed_state = 3; // 3/4 (故障类型 B)
+                    parsed_state = 3; // 3/4 (故障类型 B，75% 理论150次)
                 }
-                else if (high_cnt >= 92)
+                else if (high_cnt >= 185)
                 {
-                    parsed_state = 4; // 4/4 (火警！)
+                    parsed_state = 4; // 4/4 (火警！100% 理论200次)
                 }
                 else
                 {
-                    parsed_state = 0xFF; // 干扰模糊地带
+                    parsed_state = 0xFF; // 干扰模糊地带 (如 5次、66~85次等)
                 }
 
                 // ================== 核心控制逻辑 ==================
