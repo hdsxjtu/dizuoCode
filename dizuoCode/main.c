@@ -25,6 +25,16 @@
 
 #define READ_OPTO() ((PORTB >> OPTO_PIN) & 0x01)
 
+// 开启此宏：PB2 (4脚) 每5ms翻转一次电平供示波器测量；量产时注释此行即可关闭测试输出以实现极限省电
+#define ENABLE_DEBUG_PIN_TOGGLE
+
+#ifdef ENABLE_DEBUG_PIN_TOGGLE
+#define DEBUG_PIN          2 // PB2 (4脚) - 示波器测试引脚 (每次5ms翻转一次电平)
+#define DEBUG_PIN_TOGGLE() PORTB ^= (1 << DEBUG_PIN)
+#else
+#define DEBUG_PIN_TOGGLE()
+#endif
+
 #define T1_INIT_VAL 39 // 32kHz (FINST 8kHz) 下 5ms 初值: 40 次计数 (0~39), 40 * 0.125ms = 5.0ms
 
 // ================= 全局变量 =================
@@ -44,6 +54,7 @@ void isr(void) __interrupt(0)
     if (INTFbits.T1IF)
     {
         INTFbits.T1IF = 0; // 清除 Timer1 中断标志 (硬件自动重填初值，零丢拍)
+        DEBUG_PIN_TOGGLE(); // 示波器测试：每次5ms到达硬件翻转一次 PB2 (高/低电平各5ms)
         flag_5ms      = 1;
     }
 }
@@ -52,10 +63,15 @@ void isr(void) __interrupt(0)
 void system_init()
 {
     IOSTA = 0xEB; // PA4, PA2 输出，其余输入
+#ifdef ENABLE_DEBUG_PIN_TOGGLE
+    IOSTB = 0xFB; // PB2 (4脚) 输出，其余输入 (1111 1011b)
+    BPHCON |= (1 << OPTO_PIN) | (1 << DEBUG_PIN); // 禁用 PB1、PB2 内部上拉电阻 (避免漏电)
+#else
     IOSTB = 0xFF; // PB 全输入
+    BPHCON |= (1 << OPTO_PIN); // 禁用 PB1 内部上拉电阻 (外部已有 R10 下拉，避免分压打架与漏电)
+#endif
     PORTA = 0x00; // 继电器默认断开
     PORTB = 0x00;
-    BPHCON |= (1 << OPTO_PIN); // 禁用 PB1 内部上拉电阻 (外部已有 R10 下拉，避免分压打架与漏电)
 
     // 切换至低频 32kHz LRC 运行以降低功耗
     OSCCR = 0x02; // SELHOSC = 0 (使用低频), STPHOSC = 1 (停止高频)
