@@ -5,7 +5,7 @@
  * 目标 MCU: NY8BE62DS8
  * 功能描述: 烟感探测器底座信号解析
  * - 0/4 (0%), 2/4 (50%), 3/4 (75%) : 故障状态 -> 故障继电器吸合。
- * - 1/4 (25%) : 正常待机状态 -> 继电器全断开。
+ * - 1/16 (6.25%) 或 1/4 (25%) : 正常待机状态 -> 继电器全断开。
  * - 4/4 (100%) : 火警状态 -> 火警继电器吸合，并永久自锁，直到断电。
  * - 安全机制：任何状态的改变（包括触发故障、恢复正常、触发火警），都必须连续2次(即2秒)检测到相同状态才执行。
  */
@@ -25,7 +25,7 @@
 
 #define READ_OPTO() ((PORTB >> OPTO_PIN) & 0x01)
 
-#define T0_INIT_VAL 216 // 32kHz下 5ms初值 (256 - 5ms / 0.125ms = 216)
+#define T1_INIT_VAL 39 // 32kHz (FINST 8kHz) 下 5ms 初值: 40 次计数 (0~39), 40 * 0.125ms = 5.0ms
 
 // ================= 全局变量 =================
 volatile unsigned char flag_5ms = 0;
@@ -41,10 +41,9 @@ unsigned char fire_alarm_latched = 0;
 // ================= 中断服务函数 =================
 void isr(void) __interrupt(0)
 {
-    if (INTFbits.T0IF)
+    if (INTFbits.T1IF)
     {
-        TMR0          = T0_INIT_VAL;
-        INTFbits.T0IF = 0;
+        INTFbits.T1IF = 0; // 清除 Timer1 中断标志 (硬件自动重填初值，零丢拍)
         flag_5ms      = 1;
     }
 }
@@ -61,13 +60,21 @@ void system_init()
     // 切换至低频 32kHz LRC 运行以降低功耗
     OSCCR = 0x02; // SELHOSC = 0 (使用低频), STPHOSC = 1 (停止高频)
 
-    // 配置 Timer0 时钟源为低频 LRC (32kHz)，预分频 1:4
-    // LCKTM0 = 1, T0CS = 1, PS0WDT = 0, PS0SEL = 001 -> 0xA1
-    T0MD = 0xA1;
-    TMR0 = T0_INIT_VAL;
+    // 配置 Timer1 硬件自动重载模式 (精准 5.0ms)
+    // 1. 时钟源选择 FINST (8kHz)，禁用预分频 (/PS1EN = 1) -> 1:1 无分频，每计数 125us
+    //    按官方规范：/PS1EN=1 时 PS1SEL[2:0] 必须设为 111b (0x0F) 以防中断误触发
+    T1CR2 = 0x0F;
+
+    // 2. 装载 5ms 初值 (40次计数值: 40 * 125us = 5.0ms)
+    //    手册规定: 先写高 2 位 TMRH[5:4]，再写低 8 位 TMR1
+    TMRH &= 0xCF;       // 清空高 2 位 TMRH[5:4] (初值 39 小于 256)
+    TMR1 = T1_INIT_VAL; // 39 倒数至 0 共经历 40 个周期 (5.0ms)
+
+    // 3. 启动 Timer1，开启硬件自动重载 (T1RL=1, T1EN=1, PWM1OEN=0)
+    T1CR1 = 0x03;
 
     INTF          = 0x00;
-    INTEbits.T0IE = 1;
+    INTEbits.T1IE = 1;
     ENI();
 }
 
@@ -115,9 +122,9 @@ void main(void)
                 else if (high_cnt >= 6 && high_cnt < 66)
                 {
                     // 1: 正常待机
-                    // 适配 1/16 占空比(理论12.5次，涵盖6~25次)
-                    // 同时向下兼容 1/4 占空比(理论50次)
-                    parsed_state = 1; 
+                    // 适配 1/16 占空比 (理论 12.5 次，涵盖 6~25 次)
+                    // 同时向下兼容 1/4 占空比 (理论 50 次，涵盖 35~65 次)
+                    parsed_state = 1;
                 }
                 else if (high_cnt > 85 && high_cnt < 115)
                 {
@@ -161,7 +168,7 @@ void main(void)
                             }
                             else if (active_state == 1)
                             {
-                                // 确认恢复正常！(1/4) 连续两秒信号正常，断开所有继电器
+                                // 确认恢复正常！(1/16 或 1/4) 连续两秒信号正常，断开所有继电器
                                 FAULT_RELAY_OFF();
                                 FIRE_RELAY_OFF();
                             }
