@@ -58,8 +58,9 @@ unsigned char opto_debounced  = 0; // 去毛刺后的稳定电平 (连续2拍确
 unsigned char last_debounced  = 0; // 上一次稳定电平 (用于抓上升沿)
 
 // 周期与高电平积分统计 (抗温漂自适应)
-unsigned char cycle_cnt = 0; // 当前周期总采样点数 (标称100，自适应60~135)
-unsigned char high_cnt  = 0; // 当前周期高电平采样点数
+unsigned char has_synced = 0; // 相位对齐标志 (0=尚未对齐首个上升沿, 1=已对齐)
+unsigned char cycle_cnt  = 0; // 当前周期总采样点数 (标称100，自适应60~135)
+unsigned char high_cnt   = 0; // 当前周期高电平采样点数
 
 // 状态判决变量
 unsigned char parsed_state      = 0;
@@ -131,6 +132,7 @@ void main(void)
         if (flag_10ms == 1)
         {
             flag_10ms = 0;
+
             // 1. 读取光耦引脚电平
             unsigned char raw_sample = READ_OPTO();
 
@@ -157,22 +159,25 @@ void main(void)
             // 5. 【自适应周期结算与状态判定】
             // 触发结算的两种情况：
             //   情况 A: 周期信号到达完整周期 (上升沿到达，且周期满足门限 cycle_cnt >= 60) -> 免疫时钟高低温温漂！
-            //   情况 B: 静态直流信号超时 (常高或常低无跳变，cycle_cnt >= 135，约1.35秒无上升沿) -> 0% 断线故障 或 100%
-            //   火警
+            //   情况 B: 静态直流信号超时 (常高或常低无跳变，cycle_cnt >= 135，约1.35秒无上升沿) -> 0% 断线故障 或 100% 火警
             unsigned char do_settle  = 0;
             unsigned char prev_cycle = 0;
             unsigned char prev_high  = 0;
 
-            if (is_rising && cycle_cnt >= 60)
+            if (is_rising)
             {
-                // 周期信号结算：上个周期的总数与高电平数（去除当前刚跳变的这第1拍）
-                prev_cycle = cycle_cnt - 1;
-                prev_high  = high_cnt - 1;
-                do_settle  = 1;
+                if (has_synced && cycle_cnt >= 60)
+                {
+                    // 已同步且满足完整周期门限：结算上一完整周期的统计结果
+                    prev_cycle = cycle_cnt - 1;
+                    prev_high  = high_cnt - 1;
+                    do_settle  = 1;
+                }
 
-                // 新周期从当前这第 1 拍开始
-                cycle_cnt = 1;
-                high_cnt  = 1;
+                // 无论是冷启动首次捕获上升沿，还是正常周期结算，都以此上升沿作为新周期的起始第 1 拍
+                has_synced = 1;
+                cycle_cnt  = 1;
+                high_cnt   = 1;
             }
             else if (cycle_cnt >= 135)
             {
@@ -181,9 +186,10 @@ void main(void)
                 prev_high  = high_cnt;
                 do_settle  = 1;
 
-                // 清零开启新一轮超时检测
-                cycle_cnt = 0;
-                high_cnt  = 0;
+                // 静态信号无边沿跳变，清空同步标志
+                has_synced = 0;
+                cycle_cnt  = 0;
+                high_cnt   = 0;
             }
 
             if (do_settle)
