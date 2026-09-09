@@ -24,8 +24,6 @@
 #define FIRMWARE_VER_PATCH  0
 #define FIRMWARE_VER_STRING "V1.1.0"
 
-// #define ENABLE_TEST_MODE
-
 // ================= 宏定义与参数配置 =================
 #define FAULT_RELAY_PIN 4 // PA4 (7脚) - 对应故障继电器
 #define FIRE_RELAY_PIN  2 // PA2 (6脚) - 对应火警继电器
@@ -55,21 +53,21 @@
 volatile unsigned char flag_10ms = 0;
 
 // 滤波与边沿检测变量 (抗脉冲群 EFT/B)
-unsigned char last_raw_sample       = 0;    // 上一次原始采样值
-unsigned char opto_debounced        = 0;    // 去毛刺后的稳定电平 (连续2拍确认)
-unsigned char last_debounced        = 0;    // 上一次稳定电平 (用于抓上升沿)
+unsigned char last_raw_sample = 0; // 上一次原始采样值
+unsigned char opto_debounced  = 0; // 去毛刺后的稳定电平 (连续2拍确认)
+unsigned char last_debounced  = 0; // 上一次稳定电平 (用于抓上升沿)
 
 // 周期与高电平积分统计 (抗温漂自适应)
-unsigned char cycle_cnt             = 0;    // 当前周期总采样点数 (标称100，自适应60~135)
-unsigned char high_cnt              = 0;    // 当前周期高电平采样点数
+unsigned char cycle_cnt = 0; // 当前周期总采样点数 (标称100，自适应60~135)
+unsigned char high_cnt  = 0; // 当前周期高电平采样点数
 
 // 状态判决变量
-unsigned char parsed_state          = 0;
-unsigned char last_parsed_state     = 0xFF;
-unsigned char active_state          = 0xFF;
+unsigned char parsed_state      = 0;
+unsigned char last_parsed_state = 0xFF;
+unsigned char active_state      = 0xFF;
 
 // 火警自锁专属标志位 (0=未触发, 1=已触发且死锁)
-unsigned char fire_alarm_latched    = 0;
+unsigned char fire_alarm_latched = 0;
 
 // 固件版本常量 (固化在 ROM 中供固件版本追溯与防混淆)
 const char FIRMWARE_VER[] = FIRMWARE_VER_STRING;
@@ -79,9 +77,9 @@ void isr(void) __interrupt(0)
 {
     if (INTFbits.T1IF)
     {
-        INTFbits.T1IF = 0; // 清除 Timer1 中断标志 (硬件自动重填初值，零丢拍)
+        INTFbits.T1IF = 0;  // 清除 Timer1 中断标志 (硬件自动重填初值，零丢拍)
         DEBUG_PIN_TOGGLE(); // 示波器测试：每次10ms到达硬件翻转一次 PB2 (高/低电平各10ms，50Hz方波)
-        flag_10ms     = 1;
+        flag_10ms = 1;
     }
 }
 
@@ -90,11 +88,11 @@ void system_init()
 {
     IOSTA = 0xEB; // PA4, PA2 输出，其余输入
 #ifdef ENABLE_DEBUG_PIN_TOGGLE
-    IOSTB = 0xFB; // PB2 (4脚) 输出，其余输入 (1111 1011b)
+    IOSTB = 0xFB;               // PB2 (4脚) 输出，其余输入 (1111 1011b)
     BPHCON &= ~(1 << OPTO_PIN); // 开启 PB1 内部上拉电阻 (保证光耦电平干净陡峭，与Timer0版本一致)
     BPHCON |= (1 << DEBUG_PIN); // 禁用 PB2 内部上拉电阻
 #else
-    IOSTB = 0xFF; // PB 全输入
+    IOSTB = 0xFF;               // PB 全输入
     BPHCON &= ~(1 << OPTO_PIN); // 开启 PB1 内部上拉电阻 (保证光耦电平干净陡峭，与Timer0版本一致)
 #endif
     PORTA = 0x00; // 继电器默认断开
@@ -133,20 +131,6 @@ void main(void)
         if (flag_10ms == 1)
         {
             flag_10ms = 0;
-
-#ifdef ENABLE_TEST_MODE
-            // 让 PA2 和 PA4 实时追踪 PB1 的状态
-            if (READ_OPTO() == 1)
-            {
-                FIRE_RELAY_ON();
-                FAULT_RELAY_ON();
-            }
-            else
-            {
-                FIRE_RELAY_OFF();
-                FAULT_RELAY_OFF();
-            }
-#else
             // 1. 读取光耦引脚电平
             unsigned char raw_sample = READ_OPTO();
 
@@ -161,7 +145,7 @@ void main(void)
 
             // 3. 检测是否为有效上升沿 (0 -> 1)
             unsigned char is_rising = (opto_debounced == 1 && last_debounced == 0);
-            last_debounced = opto_debounced;
+            last_debounced          = opto_debounced;
 
             // 4. 统计累加
             cycle_cnt++;
@@ -173,8 +157,9 @@ void main(void)
             // 5. 【自适应周期结算与状态判定】
             // 触发结算的两种情况：
             //   情况 A: 周期信号到达完整周期 (上升沿到达，且周期满足门限 cycle_cnt >= 60) -> 免疫时钟高低温温漂！
-            //   情况 B: 静态直流信号超时 (常高或常低无跳变，cycle_cnt >= 135，约1.35秒无上升沿) -> 0% 断线故障 或 100% 火警
-            unsigned char do_settle = 0;
+            //   情况 B: 静态直流信号超时 (常高或常低无跳变，cycle_cnt >= 135，约1.35秒无上升沿) -> 0% 断线故障 或 100%
+            //   火警
+            unsigned char do_settle  = 0;
             unsigned char prev_cycle = 0;
             unsigned char prev_high  = 0;
 
@@ -284,7 +269,6 @@ void main(void)
                 // 记录本次状态供下个周期比对
                 last_parsed_state = parsed_state;
             }
-#endif
         }
     }
 }
