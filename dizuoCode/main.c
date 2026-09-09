@@ -207,10 +207,5 @@ void main(void)
             }
 #endif
         }
-        else
-        {
-            // 进入 Standby 模式 (OPMD[1:0] = 10b, STPHOSC = 1, SELHOSC = 0 -> 0x0A)
-            OSCCR = 0x0A;
-        }
     }
 }
