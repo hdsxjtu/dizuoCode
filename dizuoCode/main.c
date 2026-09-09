@@ -2,25 +2,27 @@
 #include "ny8_constant.h"
 
 /*
- * 固件版本: V1.0.0 (Build 20260909)
+ * 固件版本: V1.1.0 (Build 20260909)
  * 目标 MCU: NY8BE62DS8
- * 功能描述: 烟感探测器底座信号解析
+ * 功能描述: 烟感探测器底座信号解析 (工业级抗温漂自适应 + 抗脉冲群架构)
  * - 时钟架构: 32kHz (I_LRC) 2T 模式 (FINST 16kHz)，超低功耗无休眠架构 (整机约9uA)
- * - 采样机制: Timer1 硬件自动重填 10.0ms 采样，100点/秒周期结算
+ * - 抗干扰机制:
+ *   * 抗脉冲群 (EFT/B): 连续 2 拍 (20ms) 电平一致去毛刺滤波，彻底隔离瞬态尖峰毛刺
+ *   * 抗温漂 (全温区): 信号自身上升沿自适应周期同步，占空比相对比例计算，分子分母温漂误差 100% 抵消
  * - 状态映射:
  *   * 0/4 (0%)          : 故障/断线 -> 故障继电器吸合
- *   * 1/16 (6.25%) 或 1/4 (25%) : 正常待机 -> 双继电器全断开 (3~35次高电平完美兼容)
- *   * 2/4 (50%)         : 故障 A -> 故障继电器吸合
- *   * 3/4 (75%)         : 故障 B -> 故障继电器吸合
- *   * 4/4 (100%)        : 火警 -> 火警继电器吸合，永久死锁直到断电
- * - 安全防抖: 连续 2 秒（2 次独立窗口）确认相同状态后执行继电器联动
+ *   * 1/16 (6.25%) 或 1/4 (25%) : 正常待机 -> 双继电器全断开 (3%~35% 完美宽容度)
+ *   * 2/4 (50%)         : 故障 A -> 故障继电器吸合 (40%~60%)
+ *   * 3/4 (75%)         : 故障 B -> 故障继电器吸合 (65%~85%)
+ *   * 4/4 (100%)        : 火警 -> 火警继电器吸合，永久死锁直到断电 (>=88%)
+ * - 安全防抖: 连续 2 个完整周期确认相同状态后执行继电器联动
  */
 
 // ================= 固件版本定义 =================
 #define FIRMWARE_VER_MAJOR  1
-#define FIRMWARE_VER_MINOR  0
+#define FIRMWARE_VER_MINOR  1
 #define FIRMWARE_VER_PATCH  0
-#define FIRMWARE_VER_STRING "V1.0.0"
+#define FIRMWARE_VER_STRING "V1.1.0"
 
 // #define ENABLE_TEST_MODE
 
@@ -51,14 +53,23 @@
 
 // ================= 全局变量 =================
 volatile unsigned char flag_10ms = 0;
-unsigned char cycle_cnt          = 0; // 满 100 次结算，8位即可 (0~255)
-unsigned char high_cnt           = 0; // 8位即可，运算更快更轻量
-unsigned char parsed_state       = 0;
-unsigned char last_parsed_state  = 0xFF;
-unsigned char active_state       = 0xFF;
+
+// 滤波与边沿检测变量 (抗脉冲群 EFT/B)
+unsigned char last_raw_sample       = 0;    // 上一次原始采样值
+unsigned char opto_debounced        = 0;    // 去毛刺后的稳定电平 (连续2拍确认)
+unsigned char last_debounced        = 0;    // 上一次稳定电平 (用于抓上升沿)
+
+// 周期与高电平积分统计 (抗温漂自适应)
+unsigned char cycle_cnt             = 0;    // 当前周期总采样点数 (标称100，自适应60~135)
+unsigned char high_cnt              = 0;    // 当前周期高电平采样点数
+
+// 状态判决变量
+unsigned char parsed_state          = 0;
+unsigned char last_parsed_state     = 0xFF;
+unsigned char active_state          = 0xFF;
 
 // 火警自锁专属标志位 (0=未触发, 1=已触发且死锁)
-unsigned char fire_alarm_latched = 0;
+unsigned char fire_alarm_latched    = 0;
 
 // 固件版本常量 (固化在 ROM 中供固件版本追溯与防混淆)
 const char FIRMWARE_VER[] = FIRMWARE_VER_STRING;
@@ -122,7 +133,6 @@ void main(void)
         if (flag_10ms == 1)
         {
             flag_10ms = 0;
-            cycle_cnt++;
 
 #ifdef ENABLE_TEST_MODE
             // 让 PA2 和 PA4 实时追踪 PB1 的状态
@@ -137,42 +147,95 @@ void main(void)
                 FAULT_RELAY_OFF();
             }
 #else
-            // 采样光耦状态
-            if (READ_OPTO() == 1)
+            // 1. 读取光耦引脚电平
+            unsigned char raw_sample = READ_OPTO();
+
+            // 2. 【防脉冲群干扰】连续 2 拍（20ms）一致去毛刺滤波
+            // 真实信号最短 62.5ms (>=6拍)，脉冲群干扰通常 <15ms
+            // 连续2拍电平一致才认可跳变，彻底消除单拍脉冲群毛刺
+            if (raw_sample == last_raw_sample)
+            {
+                opto_debounced = raw_sample;
+            }
+            last_raw_sample = raw_sample;
+
+            // 3. 检测是否为有效上升沿 (0 -> 1)
+            unsigned char is_rising = (opto_debounced == 1 && last_debounced == 0);
+            last_debounced = opto_debounced;
+
+            // 4. 统计累加
+            cycle_cnt++;
+            if (opto_debounced == 1)
             {
                 high_cnt++;
             }
 
-            // 满 100 次采样 (10ms * 100 = 1 秒结算一次)
-            if (cycle_cnt >= 100)
+            // 5. 【自适应周期结算与状态判定】
+            // 触发结算的两种情况：
+            //   情况 A: 周期信号到达完整周期 (上升沿到达，且周期满足门限 cycle_cnt >= 60) -> 免疫时钟高低温温漂！
+            //   情况 B: 静态直流信号超时 (常高或常低无跳变，cycle_cnt >= 135，约1.35秒无上升沿) -> 0% 断线故障 或 100% 火警
+            unsigned char do_settle = 0;
+            unsigned char prev_cycle = 0;
+            unsigned char prev_high  = 0;
+
+            if (is_rising && cycle_cnt >= 60)
             {
-                // 步骤 1: 解析本次波形状态 (10ms 采样，总数 100 次)
-                if (high_cnt <= 2)
+                // 周期信号结算：上个周期的总数与高电平数（去除当前刚跳变的这第1拍）
+                prev_cycle = cycle_cnt - 1;
+                prev_high  = high_cnt - 1;
+                do_settle  = 1;
+
+                // 新周期从当前这第 1 拍开始
+                cycle_cnt = 1;
+                high_cnt  = 1;
+            }
+            else if (cycle_cnt >= 135)
+            {
+                // 超时静态信号结算 (0% 断线 或 100% 火警)
+                prev_cycle = cycle_cnt;
+                prev_high  = high_cnt;
+                do_settle  = 1;
+
+                // 清零开启新一轮超时检测
+                cycle_cnt = 0;
+                high_cnt  = 0;
+            }
+
+            if (do_settle)
+            {
+                // 用放大 100 倍做整数比例判定，完全消除除法库开销与浮点计算，
+                // 同时分子与分母同比例缩放，时钟温漂误差被 100% 抵消！
+                unsigned int high_scaled = (unsigned int)prev_high * 100;
+
+                if (prev_high <= 2)
                 {
                     parsed_state = 0; // 0/4 (无探测器或断线，留 0~2 次抗杂波裕量)
                 }
-                else if (high_cnt >= 4 && high_cnt <= 35)
+                else if (high_scaled >= 3 * (unsigned int)prev_cycle && 
+                         high_scaled <= 35 * (unsigned int)prev_cycle)
                 {
                     // 1: 正常待机
-                    // 完美兼容 1/16 占空比 (理论 6.25 次，涵盖 4~15 次)
-                    // 同时完美兼容 1/4 占空比 (理论 25 次，涵盖 16~35 次)
+                    // 完美兼容 1/16 占空比 (理论 6.25%)
+                    // 同时完美兼容 1/4 占空比 (理论 25%)
                     parsed_state = 1;
                 }
-                else if (high_cnt >= 42 && high_cnt <= 58)
+                else if (high_scaled >= 40 * (unsigned int)prev_cycle && 
+                         high_scaled <= 60 * (unsigned int)prev_cycle)
                 {
-                    parsed_state = 2; // 2/4 (故障类型 A，50% 理论50次)
+                    parsed_state = 2; // 2/4 (故障类型 A，50%)
                 }
-                else if (high_cnt >= 67 && high_cnt <= 83)
+                else if (high_scaled >= 65 * (unsigned int)prev_cycle && 
+                         high_scaled <= 85 * (unsigned int)prev_cycle)
                 {
-                    parsed_state = 3; // 3/4 (故障类型 B，75% 理论75次)
+                    parsed_state = 3; // 3/4 (故障类型 B，75%)
                 }
-                else if (high_cnt >= 90)
+                else if (prev_high >= prev_cycle - 3 || high_scaled >= 88 * (unsigned int)prev_cycle)
                 {
-                    parsed_state = 4; // 4/4 (火警！100% 理论100次)
+                    parsed_state = 4; // 4/4 (火警！100%)
                 }
                 else
                 {
-                    parsed_state = 0xFF; // 干扰模糊地带
+                    parsed_state = 0xFF; // 干扰过渡模糊态
                 }
 
                 // ================== 核心控制逻辑 ==================
@@ -184,7 +247,7 @@ void main(void)
                 }
                 else
                 {
-                    // 【优先级 2】：任何状态的改变（包括触发故障和恢复正常），都需要连续2秒确认防抖
+                    // 【优先级 2】：任何状态的改变（包括触发故障和恢复正常），都需要连续2个独立周期确认防抖
                     if (parsed_state != 0xFF && parsed_state == last_parsed_state)
                     {
                         if (parsed_state != active_state)
@@ -200,7 +263,7 @@ void main(void)
                             }
                             else if (active_state == 1)
                             {
-                                // 确认恢复正常！(1/16 或 1/4) 连续两秒信号正常，断开所有继电器
+                                // 确认恢复正常！(1/16 或 1/4) 连续两周期信号正常，断开所有继电器
                                 FAULT_RELAY_OFF();
                                 FIRE_RELAY_OFF();
                             }
@@ -216,10 +279,6 @@ void main(void)
 
                 // 记录本次状态供下个周期比对
                 last_parsed_state = parsed_state;
-
-                // 一轮统计结束，清零计数器
-                cycle_cnt = 0;
-                high_cnt  = 0;
             }
 #endif
         }
