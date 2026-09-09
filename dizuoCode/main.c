@@ -35,7 +35,7 @@
 #define DEBUG_PIN_TOGGLE()
 #endif
 
-#define T1_INIT_VAL 79 // 32kHz (FINST 8kHz) 下 10ms 初值: 80 次计数 (0~79), 80 * 0.125ms = 10.0ms
+#define T1_INIT_VAL 159 // 32kHz 2T (FINST 16kHz) 下 10ms 初值: 160 次计数 (0~159), 160 * 0.0625ms = 10.0ms
 
 // ================= 全局变量 =================
 volatile unsigned char flag_10ms = 0;
@@ -78,14 +78,14 @@ void system_init()
     OSCCR = 0x02; // SELHOSC = 0 (使用低频), STPHOSC = 1 (停止高频)
 
     // 配置 Timer1 硬件自动重载模式 (精准 10.0ms)
-    // 1. 时钟源选择 FINST (8kHz)，禁用预分频 (/PS1EN = 1) -> 1:1 无分频，每计数 125us
+    // 1. 时钟源选择 FINST (2T模式下为 16kHz)，禁用预分频 (/PS1EN = 1) -> 1:1 无分频，每计数 62.5us
     //    按官方规范：/PS1EN=1 时 PS1SEL[2:0] 必须设为 111b (0x0F) 以防中断误触发
     T1CR2 = 0x0F;
 
-    // 2. 装载 10ms 初值 (80次计数值: 80 * 125us = 10.0ms)
+    // 2. 装载 10ms 初值 (160次计数值: 160 * 62.5us = 10.0ms)
     //    手册规定: 先写高 2 位 TMRH[5:4]，再写低 8 位 TMR1
-    TMRH &= 0xCF;       // 清空高 2 位 TMRH[5:4] (初值 79 小于 256)
-    TMR1 = T1_INIT_VAL; // 79 倒数至 0 共经历 80 个周期 (10.0ms)
+    TMRH &= 0xCF;       // 清空高 2 位 TMRH[5:4] (初值 159 小于 256)
+    TMR1 = T1_INIT_VAL; // 159 倒数至 0 共经历 160 个周期 (10.0ms)
 
     // 3. 启动 Timer1，开启硬件自动重载 (T1RL=1, T1EN=1, PWM1OEN=0)
     T1CR1 = 0x03;
