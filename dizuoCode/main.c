@@ -25,22 +25,22 @@
 
 #define READ_OPTO() ((PORTB >> OPTO_PIN) & 0x01)
 
-// 开启此宏：PB2 (4脚) 每5ms翻转一次电平供示波器测量；量产时注释此行即可关闭测试输出以实现极限省电
+// 开启此宏：PB2 (4脚) 每10ms翻转一次电平供示波器测量；量产时注释此行即可关闭测试输出以实现极限省电
 #define ENABLE_DEBUG_PIN_TOGGLE
 
 #ifdef ENABLE_DEBUG_PIN_TOGGLE
-#define DEBUG_PIN          2 // PB2 (4脚) - 示波器测试引脚 (每次5ms翻转一次电平)
+#define DEBUG_PIN          2 // PB2 (4脚) - 示波器测试引脚 (每次10ms翻转一次电平)
 #define DEBUG_PIN_TOGGLE() PORTB ^= (1 << DEBUG_PIN)
 #else
 #define DEBUG_PIN_TOGGLE()
 #endif
 
-#define T1_INIT_VAL 39 // 32kHz (FINST 8kHz) 下 5ms 初值: 40 次计数 (0~39), 40 * 0.125ms = 5.0ms
+#define T1_INIT_VAL 79 // 32kHz (FINST 8kHz) 下 10ms 初值: 80 次计数 (0~79), 80 * 0.125ms = 10.0ms
 
 // ================= 全局变量 =================
-volatile unsigned char flag_5ms = 0;
-unsigned int cycle_cnt          = 0; // 改为 16 位防溢出 (最大累计到 200+)
-unsigned int high_cnt           = 0; // 改为 16 位防溢出
+volatile unsigned char flag_10ms = 0;
+unsigned char cycle_cnt          = 0; // 满 100 次结算，8位即可 (0~255)
+unsigned char high_cnt           = 0; // 8位即可，运算更快更轻量
 unsigned char parsed_state       = 0;
 unsigned char last_parsed_state  = 0xFF;
 unsigned char active_state       = 0xFF;
@@ -54,8 +54,8 @@ void isr(void) __interrupt(0)
     if (INTFbits.T1IF)
     {
         INTFbits.T1IF = 0; // 清除 Timer1 中断标志 (硬件自动重填初值，零丢拍)
-        DEBUG_PIN_TOGGLE(); // 示波器测试：每次5ms到达硬件翻转一次 PB2 (高/低电平各5ms)
-        flag_5ms      = 1;
+        DEBUG_PIN_TOGGLE(); // 示波器测试：每次10ms到达硬件翻转一次 PB2 (高/低电平各10ms，50Hz方波)
+        flag_10ms     = 1;
     }
 }
 
@@ -65,10 +65,11 @@ void system_init()
     IOSTA = 0xEB; // PA4, PA2 输出，其余输入
 #ifdef ENABLE_DEBUG_PIN_TOGGLE
     IOSTB = 0xFB; // PB2 (4脚) 输出，其余输入 (1111 1011b)
-    BPHCON |= (1 << OPTO_PIN) | (1 << DEBUG_PIN); // 禁用 PB1、PB2 内部上拉电阻 (避免漏电)
+    BPHCON &= ~(1 << OPTO_PIN); // 开启 PB1 内部上拉电阻 (保证光耦电平干净陡峭，与Timer0版本一致)
+    BPHCON |= (1 << DEBUG_PIN); // 禁用 PB2 内部上拉电阻
 #else
     IOSTB = 0xFF; // PB 全输入
-    BPHCON |= (1 << OPTO_PIN); // 禁用 PB1 内部上拉电阻 (外部已有 R10 下拉，避免分压打架与漏电)
+    BPHCON &= ~(1 << OPTO_PIN); // 开启 PB1 内部上拉电阻 (保证光耦电平干净陡峭，与Timer0版本一致)
 #endif
     PORTA = 0x00; // 继电器默认断开
     PORTB = 0x00;
@@ -76,15 +77,15 @@ void system_init()
     // 切换至低频 32kHz LRC 运行以降低功耗
     OSCCR = 0x02; // SELHOSC = 0 (使用低频), STPHOSC = 1 (停止高频)
 
-    // 配置 Timer1 硬件自动重载模式 (精准 5.0ms)
+    // 配置 Timer1 硬件自动重载模式 (精准 10.0ms)
     // 1. 时钟源选择 FINST (8kHz)，禁用预分频 (/PS1EN = 1) -> 1:1 无分频，每计数 125us
     //    按官方规范：/PS1EN=1 时 PS1SEL[2:0] 必须设为 111b (0x0F) 以防中断误触发
     T1CR2 = 0x0F;
 
-    // 2. 装载 5ms 初值 (40次计数值: 40 * 125us = 5.0ms)
+    // 2. 装载 10ms 初值 (80次计数值: 80 * 125us = 10.0ms)
     //    手册规定: 先写高 2 位 TMRH[5:4]，再写低 8 位 TMR1
-    TMRH &= 0xCF;       // 清空高 2 位 TMRH[5:4] (初值 39 小于 256)
-    TMR1 = T1_INIT_VAL; // 39 倒数至 0 共经历 40 个周期 (5.0ms)
+    TMRH &= 0xCF;       // 清空高 2 位 TMRH[5:4] (初值 79 小于 256)
+    TMR1 = T1_INIT_VAL; // 79 倒数至 0 共经历 80 个周期 (10.0ms)
 
     // 3. 启动 Timer1，开启硬件自动重载 (T1RL=1, T1EN=1, PWM1OEN=0)
     T1CR1 = 0x03;
@@ -103,9 +104,9 @@ void main(void)
     {
         CLRWDT();
 
-        if (flag_5ms == 1)
+        if (flag_10ms == 1)
         {
-            flag_5ms = 0;
+            flag_10ms = 0;
             cycle_cnt++;
 
 #ifdef ENABLE_TEST_MODE
@@ -121,42 +122,42 @@ void main(void)
                 FAULT_RELAY_OFF();
             }
 #else
-            // 采样光耦状态。
+            // 采样光耦状态
             if (READ_OPTO() == 1)
             {
                 high_cnt++;
             }
 
-            // 满 200 次采样 (5ms * 200 = 1 秒结算一次)
-            if (cycle_cnt >= 200)
+            // 满 100 次采样 (10ms * 100 = 1 秒结算一次)
+            if (cycle_cnt >= 100)
             {
-                // 步骤 1: 解析本次波形状态 (5ms 采样，总数 200 次)
-                if (high_cnt <= 4)
+                // 步骤 1: 解析本次波形状态 (10ms 采样，总数 100 次)
+                if (high_cnt <= 2)
                 {
-                    parsed_state = 0; // 0/4 (无探测器或断线，留 0~4 次抗毛刺裕量)
+                    parsed_state = 0; // 0/4 (无探测器或断线，留 0~2 次抗杂波裕量)
                 }
-                else if (high_cnt >= 6 && high_cnt < 66)
+                else if (high_cnt >= 4 && high_cnt <= 35)
                 {
                     // 1: 正常待机
-                    // 适配 1/16 占空比 (理论 12.5 次，涵盖 6~25 次)
-                    // 同时向下兼容 1/4 占空比 (理论 50 次，涵盖 35~65 次)
+                    // 完美兼容 1/16 占空比 (理论 6.25 次，涵盖 4~15 次)
+                    // 同时完美兼容 1/4 占空比 (理论 25 次，涵盖 16~35 次)
                     parsed_state = 1;
                 }
-                else if (high_cnt > 85 && high_cnt < 115)
+                else if (high_cnt >= 42 && high_cnt <= 58)
                 {
-                    parsed_state = 2; // 2/4 (故障类型 A，50% 理论100次)
+                    parsed_state = 2; // 2/4 (故障类型 A，50% 理论50次)
                 }
-                else if (high_cnt > 135 && high_cnt < 165)
+                else if (high_cnt >= 67 && high_cnt <= 83)
                 {
-                    parsed_state = 3; // 3/4 (故障类型 B，75% 理论150次)
+                    parsed_state = 3; // 3/4 (故障类型 B，75% 理论75次)
                 }
-                else if (high_cnt >= 185)
+                else if (high_cnt >= 90)
                 {
-                    parsed_state = 4; // 4/4 (火警！100% 理论200次)
+                    parsed_state = 4; // 4/4 (火警！100% 理论100次)
                 }
                 else
                 {
-                    parsed_state = 0xFF; // 干扰模糊地带 (如 5次、66~85次等)
+                    parsed_state = 0xFF; // 干扰模糊地带
                 }
 
                 // ================== 核心控制逻辑 ==================
@@ -198,7 +199,7 @@ void main(void)
                     }
                 }
 
-                // 记录本次状态供下个周期比对 (火警死锁后此记录不再发挥实质作用)
+                // 记录本次状态供下个周期比对
                 last_parsed_state = parsed_state;
 
                 // 一轮统计结束，清零计数器
