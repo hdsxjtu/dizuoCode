@@ -25,8 +25,8 @@
 #define FIRMWARE_VER_STRING "V1.1.0"
 
 // ================= 宏定义与参数配置 =================
-#define FAULT_RELAY_PIN 4 // PA4 (7脚) - 对应故障继电器
-#define FIRE_RELAY_PIN  2 // PA2 (6脚) - 对应火警继电器
+#define FAULT_RELAY_PIN 2 // PA2 (6脚) - 对应故障继电器
+#define FIRE_RELAY_PIN  4 // PA4 (7脚) - 对应火警继电器
 #define OPTO_PIN        1 // PB1 (5脚) - 对应光耦输入
 
 #define FAULT_RELAY_ON()  PORTA |= (1 << FAULT_RELAY_PIN)
