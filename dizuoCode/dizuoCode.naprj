@@ -21,7 +21,7 @@
     <OutputType>bin</OutputType>
     <Platform>CNy8</Platform>
     <ProjectGuid>{FA728B24-577F-4200-954A-AA022149E996}</ProjectGuid>
-    <ProjectOptionChanged>True</ProjectOptionChanged>
+    <ProjectOptionChanged>False</ProjectOptionChanged>
     <ReservedInterruptRam>2</ReservedInterruptRam>
     <RootNamespace>dizuoCode</RootNamespace>
     <TrimSetting>+ 0%</TrimSetting>

@@ -89,13 +89,12 @@ void system_init()
 {
     IOSTA = 0xEB; // PA4, PA2 输出，其余输入
 #ifdef ENABLE_DEBUG_PIN_TOGGLE
-    IOSTB = 0xFB;               // PB2 (4脚) 输出，其余输入 (1111 1011b)
-    BPHCON &= ~(1 << OPTO_PIN); // 开启 PB1 内部上拉电阻 (保证光耦电平干净陡峭，与Timer0版本一致)
-    BPHCON |= (1 << DEBUG_PIN); // 禁用 PB2 内部上拉电阻
+    IOSTB = 0xFB; // PB2 (4脚) 输出，其余输入 (1111 1011b)
 #else
-    IOSTB = 0xFF;               // PB 全输入
-    BPHCON &= ~(1 << OPTO_PIN); // 开启 PB1 内部上拉电阻 (保证光耦电平干净陡峭，与Timer0版本一致)
+    IOSTB = 0xFF; // PB 全输入
 #endif
+    BPHCON = 0xFF; // 禁用 PB 所有引脚的内部上拉电阻 (PB1 光耦引脚不开启内部上拉)
+
     PORTA = 0x00; // 继电器默认断开
     PORTB = 0x00;
 
