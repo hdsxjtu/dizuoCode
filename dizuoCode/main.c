@@ -37,20 +37,39 @@
 
 #define READ_OPTO() ((PORTB >> OPTO_PIN) & 0x01)
 
-// 开启此宏：PB2 (4脚) 每10ms翻转一次电平供示波器测量；量产时注释此行即可关闭测试输出以实现极限省电
-#define ENABLE_DEBUG_PIN_TOGGLE
+// ================= 测试调试宏配置 (3脚与4脚) =================
+// 开启此宏：开启 3脚 (占空比数据波形输出) 与 4脚 (10ms翻转方波) 供示波器测量抓取
+// 量产时注释此宏定义，即可彻底关闭 3脚与4脚的所有测试代码，节省 RAM、ROM 并实现极限省电
+#define ENABLE_DEBUG_TEST_PINS
 
-#ifdef ENABLE_DEBUG_PIN_TOGGLE
+#ifdef ENABLE_DEBUG_TEST_PINS
+#define ENABLE_DEBUG_PIN_4_TOGGLE // 4脚 (PB2) - 示波器 10ms 方波测试引脚
+#define ENABLE_DEBUG_PIN_3_DUTY   // 3脚 (PB3) - 示波器占空比数据输出引脚
+#endif
+
+#ifdef ENABLE_DEBUG_PIN_4_TOGGLE
 #define DEBUG_PIN          2 // PB2 (4脚) - 示波器测试引脚 (每次10ms翻转一次电平)
 #define DEBUG_PIN_TOGGLE() PORTB ^= (1 << DEBUG_PIN)
 #else
 #define DEBUG_PIN_TOGGLE()
 #endif
 
+#ifdef ENABLE_DEBUG_PIN_3_DUTY
+#define DUTY_TX_PIN    3 // PB3 (3脚) - 占空比输出引脚 (每10ms输出1个bit)
+#define DUTY_TX_HIGH() PORTB |= (1 << DUTY_TX_PIN)
+#define DUTY_TX_LOW()  PORTB &= ~(1 << DUTY_TX_PIN)
+#endif
+
 #define T1_INIT_VAL 159 // 32kHz 2T (FINST 16kHz) 下 10ms 初值: 160 次计数 (0~159), 160 * 0.0625ms = 10.0ms
 
 // ================= 全局变量 =================
 volatile unsigned char flag_10ms = 0;
+
+#ifdef ENABLE_DEBUG_PIN_3_DUTY
+// 3脚占空比发送变量 (带开头结尾：开头20ms高+10ms低，8位数据MSB，结尾10ms高)
+unsigned char duty_tx_val  = 0;
+unsigned char duty_tx_step = 0;
+#endif
 
 // 滤波与边沿检测变量 (抗脉冲群 EFT/B)
 unsigned char last_raw_sample = 0; // 上一次原始采样值
@@ -88,11 +107,17 @@ void isr(void) __interrupt(0)
 void system_init()
 {
     IOSTA = 0xEB; // PA4, PA2 输出，其余输入
-#ifdef ENABLE_DEBUG_PIN_TOGGLE
-    IOSTB = 0xFB; // PB2 (4脚) 输出，其余输入 (1111 1011b)
-#else
-    IOSTB = 0xFF; // PB 全输入
+
+    // 配置 PB 端口输出方向 (3脚与4脚测试引脚)
+    unsigned char portb_dir = 0xFF; // 默认全输入
+#ifdef ENABLE_DEBUG_PIN_4_TOGGLE
+    portb_dir &= ~(1 << DEBUG_PIN); // PB2 (4脚) 设为输出
 #endif
+#ifdef ENABLE_DEBUG_PIN_3_DUTY
+    portb_dir &= ~(1 << DUTY_TX_PIN); // PB3 (3脚) 设为输出
+#endif
+    IOSTB = portb_dir;
+
     BPHCON = 0xFF; // 禁用 PB 所有引脚的内部上拉电阻 (PB1 光耦引脚不开启内部上拉)
 
     PORTA = 0x00; // 继电器默认断开
@@ -204,6 +229,25 @@ void main(void)
                 unsigned char one_eighth     = quarter >> 1;
                 unsigned char half           = prev_cycle >> 1;
                 unsigned char three_quarters = half + quarter;
+#ifdef ENABLE_DEBUG_PIN_3_DUTY
+                // 计算当前采集到的实际占空比百分比 (0~100)
+                unsigned char duty_pct = 0;
+                if (prev_cycle > 0)
+                {
+                    if (prev_high >= prev_cycle)
+                    {
+                        duty_pct = 100;
+                    }
+                    else
+                    {
+                        duty_pct = (unsigned char)(((unsigned int)prev_high * 100) / prev_cycle);
+                    }
+                }
+
+                // 启动 3脚 (PB3) 帧发送：共12拍 (开头20ms高+10ms低, 8位数据, 结尾10ms高)
+                duty_tx_val  = duty_pct;
+                duty_tx_step = 12;
+#endif
 
                 if (prev_high <= 2)
                 {
@@ -274,6 +318,53 @@ void main(void)
                 // 记录本次状态供下个周期比对
                 last_parsed_state = parsed_state;
             }
+
+#ifdef ENABLE_DEBUG_PIN_3_DUTY
+            // 6. 【3脚 (PB3) 占空比输出】每 10ms 输出 1 个拍位
+            // 协议时序：
+            //   - 第 1~2 拍 (step 12, 11): 20ms 高电平 (醒目宽脉冲开头，示波器上升沿触发)
+            //   - 第 3 拍   (step 10):     10ms 低电平 (间隔/同步槽)
+            //   - 第 4~11拍 (step 9~2):    8 位数据 D7~D0，MSB先行，每位10ms
+            //   - 第 12 拍  (step 1):      10ms 高电平 (明确结尾)
+            //   - 发送完毕后回归常低电平
+            if (duty_tx_step > 0)
+            {
+                if (duty_tx_step >= 11)
+                {
+                    // 开头前 2 拍：20ms 高电平
+                    DUTY_TX_HIGH();
+                }
+                else if (duty_tx_step == 10)
+                {
+                    // 开头第 3 拍：10ms 低电平
+                    DUTY_TX_LOW();
+                }
+                else if (duty_tx_step >= 2)
+                {
+                    // 中间 8 拍 (step 9 down to 2)：数据 D7 ~ D0
+                    if (duty_tx_val & 0x80)
+                    {
+                        DUTY_TX_HIGH();
+                    }
+                    else
+                    {
+                        DUTY_TX_LOW();
+                    }
+                    duty_tx_val <<= 1;
+                }
+                else
+                {
+                    // 结尾第 12 拍 (step 1)：10ms 高电平
+                    DUTY_TX_HIGH();
+                }
+
+                duty_tx_step--;
+            }
+            else
+            {
+                DUTY_TX_LOW();
+            }
+#endif
         }
     }
 }
