@@ -230,22 +230,8 @@ void main(void)
                 unsigned char half           = prev_cycle >> 1;
                 unsigned char three_quarters = half + quarter;
 #ifdef ENABLE_DEBUG_PIN_3_DUTY
-                // 计算当前采集到的实际占空比百分比 (0~100)
-                unsigned char duty_pct = 0;
-                if (prev_cycle > 0)
-                {
-                    if (prev_high >= prev_cycle)
-                    {
-                        duty_pct = 100;
-                    }
-                    else
-                    {
-                        duty_pct = (unsigned char)(((unsigned int)prev_high * 100) / prev_cycle);
-                    }
-                }
-
-                // 启动 3脚 (PB3) 帧发送：共12拍 (开头20ms高+10ms低, 8位数据, 结尾10ms高)
-                duty_tx_val  = duty_pct;
+                // 3脚直接输出采集到的高电平拍数 (1秒标称100拍下直接对应百分比0~100%，耗时仅1拍指令，绝不占用10ms时间片！)
+                duty_tx_val  = prev_high;
                 duty_tx_step = 12;
 #endif
 
