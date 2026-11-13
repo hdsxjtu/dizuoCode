@@ -236,6 +236,11 @@ void main(void)
                 unsigned char one_eighth     = quarter >> 1;
                 unsigned char half           = prev_cycle >> 1;
                 unsigned char three_quarters = half + quarter;
+
+                // 预先计算 8 位门限变量，强制使用纯 8 位无符号比较，彻底消除 SDCC 隐式 16 位整型提升 (耗时从 15ms 压缩至 <1ms)
+                unsigned char th_standby     = quarter + one_eighth;
+                unsigned char th_fault_a     = half + one_eighth;
+                unsigned char th_fault_b     = three_quarters + one_eighth;
 #ifdef ENABLE_DEBUG_PIN_3_DUTY
                 // 3脚直接输出采集到的高电平拍数 (1秒标称100拍下直接对应百分比0~100%，耗时仅1拍指令，绝不占用10ms时间片！)
                 duty_tx_val  = prev_high;
@@ -260,17 +265,17 @@ void main(void)
                 {
                     // 【动态周期脉冲判决】：有效上升沿驱动，绝不可能是断线 (0%)！
                     // 彻底杜绝高温下 1/16 (6.25%) 窄脉冲因滤波损失被误判为 0/4 断线的漏洞
-                    if (prev_high <= (quarter + one_eighth))
+                    if (prev_high <= th_standby)
                     {
                         // 1: 正常待机 (理论占空比 <= 37.5%，完美覆盖 1/16 与 1/4)
                         parsed_state = 1;
                     }
-                    else if (prev_high <= (half + one_eighth))
+                    else if (prev_high <= th_fault_a)
                     {
                         // 2/4: 故障类型 A (理论占空比 37.5% ~ 62.5%，覆盖 50.0%)
                         parsed_state = 2;
                     }
-                    else if (prev_high <= (three_quarters + one_eighth))
+                    else if (prev_high <= th_fault_b)
                     {
                         // 3/4: 故障类型 B (理论占空比 62.5% ~ 87.5%，覆盖 75.0%)
                         parsed_state = 3;
