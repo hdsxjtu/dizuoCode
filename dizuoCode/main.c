@@ -44,7 +44,7 @@
 
 #ifdef ENABLE_DEBUG_TEST_PINS
 #define ENABLE_DEBUG_PIN_4_TOGGLE // 4脚 (PB2) - 示波器 10ms 方波测试引脚
-#define ENABLE_DEBUG_PIN_3_DUTY   // 3脚 (PB3) - 示波器占空比数据输出引脚
+// #define ENABLE_DEBUG_PIN_3_DUTY   // 注释3脚占空比输出，避免主循环与中断产生PORTB读改写冲突并消除引脚短路风险
 #endif
 
 #ifdef ENABLE_DEBUG_PIN_4_TOGGLE
@@ -123,8 +123,8 @@ void system_init()
     PORTA = 0x00; // 继电器默认断开
     PORTB = 0x00;
 
-    // 切换至低频 32kHz LRC 运行以降低功耗
-    OSCCR = 0x02; // SELHOSC = 0 (使用低频), STPHOSC = 1 (停止高频)
+    // 切换至低频 32kHz LRC 运行 (Config Option 中 Startup Clock 已选择 I_LRC，无需且禁止重复向 OSCCR 写 0x02 以防挂起)
+    // OSCCR = 0x02;
 
     // 配置 Timer1 硬件自动重载模式 (精准 10.0ms)
     // 1. 时钟源选择 FINST (2T模式下为 16kHz)，禁用预分频 (/PS1EN = 1) -> 1:1 无分频，每计数 62.5us
