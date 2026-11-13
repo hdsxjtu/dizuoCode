@@ -189,9 +189,10 @@ void main(void)
             // 触发结算的两种情况：
             //   情况 A: 周期信号到达完整周期 (上升沿到达，且周期满足门限 cycle_cnt >= 60) -> 免疫时钟高低温温漂！
             //   情况 B: 静态直流信号超时 (常高或常低无跳变，cycle_cnt >= STATIC_TIMEOUT_TICKS，约2.0秒无上升沿) -> 0% 断线故障 或 100% 火警
-            unsigned char do_settle  = 0;
-            unsigned char prev_cycle = 0;
-            unsigned char prev_high  = 0;
+            unsigned char do_settle         = 0;
+            unsigned char is_timeout_settle = 0;
+            unsigned char prev_cycle        = 0;
+            unsigned char prev_high         = 0;
 
             if (is_rising)
             {
@@ -210,10 +211,11 @@ void main(void)
             }
             else if (cycle_cnt >= STATIC_TIMEOUT_TICKS)
             {
-                // 超时静态信号结算 (0% 断线 或 100% 火警)
-                prev_cycle = cycle_cnt;
-                prev_high  = high_cnt;
-                do_settle  = 1;
+                // 超时静态信号结算 (直流常高 或 直流常低)
+                prev_cycle        = cycle_cnt;
+                prev_high         = high_cnt;
+                do_settle         = 1;
+                is_timeout_settle = 1;
 
                 // 静态信号无边沿跳变，清空同步标志
                 has_synced = 0;
@@ -240,31 +242,44 @@ void main(void)
                 duty_tx_step = 12;
 #endif
 
-                if (prev_high <= 2)
+                if (is_timeout_settle)
                 {
-                    // 0/4 (0%): 无探测器或断线故障 (允许 0~2 拍杂波裕量)
-                    parsed_state = 0;
-                }
-                else if (prev_high <= (quarter + one_eighth))
-                {
-                    // 1: 正常待机 (理论占空比 <= 37.5%)
-                    // 完美覆盖 1/16 (6.25%) 与 1/4 (25.0%)
-                    parsed_state = 1;
-                }
-                else if (prev_high <= (half + one_eighth))
-                {
-                    // 2/4: 故障类型 A (理论占空比 37.5% ~ 62.5%，覆盖 50.0%)
-                    parsed_state = 2;
-                }
-                else if (prev_high <= (three_quarters + one_eighth))
-                {
-                    // 3/4: 故障类型 B (理论占空比 62.5% ~ 87.5%，覆盖 75.0%)
-                    parsed_state = 3;
+                    // 【静态直流信号判决】：无边沿跳变超时
+                    if (prev_high >= (STATIC_TIMEOUT_TICKS - 10))
+                    {
+                        // 持续常高 (100%): 火警！
+                        parsed_state = 4;
+                    }
+                    else
+                    {
+                        // 持续常低 (0%) 或异常冻结: 断线故障！
+                        parsed_state = 0;
+                    }
                 }
                 else
                 {
-                    // 4/4: 火警！(理论占空比 > 87.5%，覆盖 100.0%)
-                    parsed_state = 4;
+                    // 【动态周期脉冲判决】：有效上升沿驱动，绝不可能是断线 (0%)！
+                    // 彻底杜绝高温下 1/16 (6.25%) 窄脉冲因滤波损失被误判为 0/4 断线的漏洞
+                    if (prev_high <= (quarter + one_eighth))
+                    {
+                        // 1: 正常待机 (理论占空比 <= 37.5%，完美覆盖 1/16 与 1/4)
+                        parsed_state = 1;
+                    }
+                    else if (prev_high <= (half + one_eighth))
+                    {
+                        // 2/4: 故障类型 A (理论占空比 37.5% ~ 62.5%，覆盖 50.0%)
+                        parsed_state = 2;
+                    }
+                    else if (prev_high <= (three_quarters + one_eighth))
+                    {
+                        // 3/4: 故障类型 B (理论占空比 62.5% ~ 87.5%，覆盖 75.0%)
+                        parsed_state = 3;
+                    }
+                    else
+                    {
+                        // 4/4: 火警！(理论占空比 > 87.5%，覆盖 100.0%)
+                        parsed_state = 4;
+                    }
                 }
 
                 // ================== 核心控制逻辑 ==================
