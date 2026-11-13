@@ -62,6 +62,10 @@
 
 #define T1_INIT_VAL 159 // 32kHz 2T (FINST 16kHz) 下 10ms 初值: 160 次计数 (0~159), 160 * 0.0625ms = 10.0ms
 
+// 静态直流信号超时门限 (200 拍 = 约 2.0 秒无边沿跳变)
+// 标称 1.0 秒周期信号，留出翻倍裕量，彻底免疫 -40℃~+85℃ 极端高低温两端 RC 频漂
+#define STATIC_TIMEOUT_TICKS 200
+
 // ================= 全局变量 =================
 volatile unsigned char flag_10ms = 0;
 
@@ -184,7 +188,7 @@ void main(void)
             // 5. 【自适应周期结算与状态判定】
             // 触发结算的两种情况：
             //   情况 A: 周期信号到达完整周期 (上升沿到达，且周期满足门限 cycle_cnt >= 60) -> 免疫时钟高低温温漂！
-            //   情况 B: 静态直流信号超时 (常高或常低无跳变，cycle_cnt >= 135，约1.35秒无上升沿) -> 0% 断线故障 或 100% 火警
+            //   情况 B: 静态直流信号超时 (常高或常低无跳变，cycle_cnt >= STATIC_TIMEOUT_TICKS，约2.0秒无上升沿) -> 0% 断线故障 或 100% 火警
             unsigned char do_settle  = 0;
             unsigned char prev_cycle = 0;
             unsigned char prev_high  = 0;
@@ -204,7 +208,7 @@ void main(void)
                 cycle_cnt  = 1;
                 high_cnt   = 1;
             }
-            else if (cycle_cnt >= 135)
+            else if (cycle_cnt >= STATIC_TIMEOUT_TICKS)
             {
                 // 超时静态信号结算 (0% 断线 或 100% 火警)
                 prev_cycle = cycle_cnt;
