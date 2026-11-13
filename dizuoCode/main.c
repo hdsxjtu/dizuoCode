@@ -106,6 +106,10 @@ void isr(void) __interrupt(0)
 // ================= 初始化函数 =================
 void system_init()
 {
+    // 先清零数据锁存器，再打开输出方向，杜绝上电复位瞬间引脚毛刺导致继电器微跳
+    PORTA = 0x00; // 继电器默认断开
+    PORTB = 0x00;
+
     IOSTA = 0xEB; // PA4, PA2 输出，其余输入
 
     // 配置 PB 端口输出方向 (3脚与4脚测试引脚)
@@ -119,9 +123,6 @@ void system_init()
     IOSTB = portb_dir;
 
     BPHCON = 0xFF; // 禁用 PB 所有引脚的内部上拉电阻 (PB1 光耦引脚不开启内部上拉)
-
-    PORTA = 0x00; // 继电器默认断开
-    PORTB = 0x00;
 
     // 切换至低频 32kHz LRC 运行 (Config Option 中 Startup Clock 已选择 I_LRC，无需且禁止重复向 OSCCR 写 0x02 以防挂起)
     // OSCCR = 0x02;
