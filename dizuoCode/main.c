@@ -122,7 +122,7 @@ void system_init()
 #endif
     IOSTB = portb_dir;
 
-    BPHCON = 0xFF; // 禁用 PB 所有引脚的内部上拉电阻 (PB1 光耦引脚不开启内部上拉)
+    BPHCON = 0x02; // 仅屏蔽 PB1 光耦引脚上拉(bit 1=1)，其余未用 PB 口开启弱上拉防止浮空漏电 (保障9uA极限低功耗)
 
     // 切换至低频 32kHz LRC 运行 (Config Option 中 Startup Clock 已选择 I_LRC，无需且禁止重复向 OSCCR 写 0x02 以防挂起)
     // OSCCR = 0x02;
